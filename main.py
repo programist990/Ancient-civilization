@@ -7,6 +7,7 @@ from kivy.uix.boxlayout import BoxLayout
 from kivy.uix.button import Button
 from kivy.uix.label import Label
 from kivy.uix.widget import Widget
+from kivy.uix.screenmanager import ScreenManager, Screen, NoTransition
 from kivy.utils import get_color_from_hex
 import random, math
 
@@ -174,6 +175,10 @@ class GameMap(Widget):
 
     def tap(self,sx,sy):
         wx,wy=self.to_world(sx,sy)
+        # In placement mode, every map click is treated as a construction attempt.
+        if self.game.build_mode:
+            self.game.build_at(wx, wy)
+            return
         # Buildings are checked first so they can be selected and inspected.
         for b in self.buildings:
             if abs(b["x"]-wx) < 42/self.zoom and abs(b["y"]-wy) < 35/self.zoom:
@@ -188,10 +193,7 @@ class GameMap(Widget):
         for lm in self.landmarks:
             if math.hypot(lm["x"]-wx,lm["y"]-wy)<60/self.zoom:
                 self.game.landmark_info(lm); return
-        if self.game.build_mode:
-            self.game.build_at(wx,wy)
-        else:
-            self.game.say("Выбери дерево или камень либо включи строительство.")
+        self.game.say("Выбери дерево или камень либо открой вкладку строительства.")
 
     def place_building(self,kind,x,y):
         # Snap construction to a simple world grid for tidy city blocks.
@@ -222,7 +224,7 @@ class GameMap(Widget):
 
 class AncientCivilization(App):
     def build(self):
-        self.title="Ancient Civilization — Prototype 0.2"
+        self.title="Ancient Civilization — Prototype 0.3"
         self.money,self.wood,self.stone,self.metal=2500,35,20,0
         self.population,self.capacity=12,20
         self.level,self.xp,self.xp_need=1,0,100
@@ -232,27 +234,87 @@ class AncientCivilization(App):
         self.timer=0
         self.message="Добро пожаловать! Собери ресурсы и построй первый дом."
 
-        root=BoxLayout(orientation="vertical",padding=dp(6),spacing=dp(5))
+        self.screens=ScreenManager(transition=NoTransition())
+        self.map_screen=Screen(name="map")
+        self.build_screen=Screen(name="construction")
+        self.screens.add_widget(self.map_screen)
+        self.screens.add_widget(self.build_screen)
+
+        map_root=BoxLayout(orientation="vertical",padding=dp(6),spacing=dp(5))
         self.hud=Label(size_hint_y=None,height=dp(48),font_size="14sp",
                        color=get_color_from_hex("#f4edda"))
-        root.add_widget(self.hud)
+        map_root.add_widget(self.hud)
         self.map=GameMap(self)
-        root.add_widget(self.map)
+        map_root.add_widget(self.map)
+
         bar=BoxLayout(size_hint_y=None,height=dp(46),spacing=dp(6))
         for title,callback in [
             ("Топор",lambda *_:self.say(f"Топор: {self.axe} применений. Нажимай на дерево.")),
             ("Кирка",lambda *_:self.say(f"Кирка: {self.pick} применений. Нажимай на камень.")),
-            ("Строить",lambda *_:self.toggle_build()),
-            ("Сменить здание",lambda *_:self.switch_building()),
+            ("Строительство",lambda *_:self.open_construction()),
+            ("Отмена",lambda *_:self.cancel_build()),
         ]:
             bar.add_widget(Button(text=title,on_release=callback))
-        root.add_widget(bar)
+        map_root.add_widget(bar)
         self.status=Label(text=self.message,size_hint_y=None,height=dp(30),
                           font_size="13sp",color=get_color_from_hex("#f4edda"))
-        root.add_widget(self.status)
+        map_root.add_widget(self.status)
+        self.map_screen.add_widget(map_root)
+
+        self.create_construction_screen()
         Clock.schedule_interval(self.tick,1)
         self.refresh()
-        return root
+        return self.screens
+
+    def create_construction_screen(self):
+        root=BoxLayout(orientation="vertical",padding=dp(18),spacing=dp(12))
+        title=Label(text="СТРОИТЕЛЬСТВО",font_size="25sp",bold=True,
+                    size_hint_y=None,height=dp(55),color=get_color_from_hex("#f4edda"))
+        root.add_widget(title)
+        info=Label(text="Выбери здание. После выбора вернёшься на карту и сможешь указать место.",
+                   size_hint_y=None,height=dp(55),font_size="15sp",
+                   color=get_color_from_hex("#d9dfd1"))
+        root.add_widget(info)
+
+        house=Button(text="ДОМ\nЦена: 500 денег, 10 дерева, 5 камня\n+10 к вместимости населения",
+                     font_size="17sp",size_hint_y=None,height=dp(115),
+                     background_normal="",background_color=get_color_from_hex("#79533d"),
+                     on_release=lambda *_:self.select_building("house"))
+        shop=Button(text="МАГАЗИН\nЦена: 800 денег, 15 дерева, 5 камня\nТребуется: 10 жителей\nДоход: 25 денег каждые 10 секунд",
+                    font_size="17sp",size_hint_y=None,height=dp(135),
+                    background_normal="",background_color=get_color_from_hex("#647b68"),
+                    on_release=lambda *_:self.select_building("shop"))
+        root.add_widget(house)
+        root.add_widget(shop)
+        root.add_widget(Widget())
+        back=Button(text="НАЗАД К ГОРОДУ",size_hint_y=None,height=dp(50),
+                    on_release=lambda *_:self.back_to_map())
+        root.add_widget(back)
+        self.build_screen.add_widget(root)
+
+    def open_construction(self):
+        self.build_mode=False
+        self.screens.current="construction"
+        self.say("Выбери здание для размещения на карте.")
+
+    def select_building(self,kind):
+        self.building=kind
+        self.build_mode=True
+        self.screens.current="map"
+        name="Дом" if kind=="house" else "Магазин"
+        self.say(f"Выбран объект: {name}. Нажми на свободное место на карте. Для отмены нажми «Отмена».")
+
+    def back_to_map(self):
+        self.build_mode=False
+        self.screens.current="map"
+        self.say("Возвращение к городу.")
+
+    def cancel_build(self):
+        if self.build_mode:
+            self.build_mode=False
+            self.say("Размещение отменено.")
+        else:
+            self.say("Сейчас режим размещения не активен.")
 
     def refresh(self):
         self.hud.text=(f"УРОВЕНЬ {self.level}   XP {self.xp}/{self.xp_need}     "
@@ -279,16 +341,6 @@ class AncientCivilization(App):
         self.add_xp(10)
         self.say(text)
         self.map.draw_map()
-
-    def toggle_build(self):
-        self.build_mode=not self.build_mode
-        self.say(f"Режим строительства: {self.building}. Нажми на свободное место." if self.build_mode
-                 else "Режим строительства выключен.")
-
-    def switch_building(self):
-        self.building="shop" if self.building=="house" else "house"
-        self.build_mode=True
-        self.say(f"Выбрано здание: {self.building}. Нажми на свободное место.")
 
     def build_at(self,x,y):
         allowed,reason=self.map.can_place(x,y)
