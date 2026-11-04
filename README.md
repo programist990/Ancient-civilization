@@ -1,32 +1,30 @@
-# Ancient Civilization — Prototype 0.1
+# Ancient Civilization — Prototype 0.2
 
-Windows prototype using Python + Kivy.
+## Запуск на Windows
+Откройте PowerShell в папке проекта и выполните:
 
-## Install
-Open CMD in this folder:
-
-```bat
+```powershell
 python -m venv venv
-venv\Scripts\activate
-python -m pip install --upgrade pip
-python -m pip install "kivy[base]"
+.\venv\Scripts\python.exe -m pip install --upgrade pip
+.\venv\Scripts\python.exe -m pip install "kivy[base]"
+.\venv\Scripts\python.exe main.py
 ```
 
-## Run
-```bat
-python main.py
-```
+Если виртуальное окружение `venv` уже создано, повторно создавать его не нужно.
 
-## Controls
-- Hold and drag the left mouse button: move around the map.
-- Mouse wheel: zoom.
-- Click a tree: get 5 wood (uses 1 axe charge).
-- Click a rock: get 4 stone (uses 1 pickaxe charge).
-- Click "Строить", then click a free map location.
-- "Сменить здание" switches between a house and a shop.
-- Houses increase population capacity. Residents arrive periodically.
-- Shops periodically generate money.
-- Port, railway station and airport are visible from the start and unlock at levels 10, 15 and 30.
+## Управление
+- Перетаскивание мышью — перемещение камеры.
+- Колесо мыши — приближение и отдаление.
+- Нажатие на дерево — добыть дерево (расходуется применение топора).
+- Нажатие на камень — добыть камень (расходуется применение кирки).
+- «Строить» — включить/выключить режим строительства.
+- «Сменить здание» — переключить дом/магазин.
+- Нажатие на построенное здание — посмотреть его назначение.
 
-This is an early prototype, not the complete game. Saving, quests, real repairs, trade and transport deliveries
-will be added in later versions. The current graphics are placeholder shapes.
+## Что нового в 0.2
+- Строительство привязано к сетке, здания ровнее располагаются на карте.
+- Нельзя строить на дорогах, поверх ресурсов, рядом с транспортными объектами или поверх других зданий.
+- Нажатие на построенный дом или магазин показывает его назначение.
+- Внешний вид домов и магазинов различается.
+
+Это ранний прототип: сохранения, задания, ремонт порта/станции/аэропорта и поставки ресурсов пока не реализованы.

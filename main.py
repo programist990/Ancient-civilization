@@ -93,18 +93,30 @@ class GameMap(Widget):
                     Color(*get_color_from_hex("#b4bcb5"))
                     Ellipse(pos=(sx-8*self.zoom,sy-1*self.zoom),
                             size=(13*self.zoom,8*self.zoom))
-            # Player buildings
+            # Player buildings: each type has its own colour and silhouette
             for b in self.buildings:
                 sx,sy=self.to_screen(b["x"],b["y"])
-                Color(*get_color_from_hex("#704b35"))
-                Rectangle(pos=(sx-24*self.zoom,sy-18*self.zoom),
-                          size=(48*self.zoom,36*self.zoom))
-                Color(*get_color_from_hex("#c47c51"))
-                Line(rectangle=(sx-24*self.zoom,sy-18*self.zoom,
-                               48*self.zoom,36*self.zoom),width=1.2)
+                if b["type"] == "house":
+                    Color(*get_color_from_hex("#b8794e"))
+                    Rectangle(pos=(sx-25*self.zoom,sy-17*self.zoom),
+                              size=(50*self.zoom,34*self.zoom))
+                    Color(*get_color_from_hex("#713f32"))
+                    Line(points=[sx-29*self.zoom,sy+2*self.zoom,
+                                 sx,sy+25*self.zoom,sx+29*self.zoom,sy+2*self.zoom],
+                         width=max(1,2*self.zoom))
+                else:
+                    Color(*get_color_from_hex("#9b9b83"))
+                    Rectangle(pos=(sx-29*self.zoom,sy-19*self.zoom),
+                              size=(58*self.zoom,38*self.zoom))
+                    Color(*get_color_from_hex("#d0b36f"))
+                    Line(rectangle=(sx-29*self.zoom,sy-19*self.zoom,
+                                   58*self.zoom,38*self.zoom),width=max(1,2*self.zoom))
+                    Color(*get_color_from_hex("#657d78"))
+                    Rectangle(pos=(sx+10*self.zoom,sy+5*self.zoom),
+                              size=(8*self.zoom,25*self.zoom))
                 Color(*get_color_from_hex("#e1cda0"))
-                Rectangle(pos=(sx-6*self.zoom,sy-18*self.zoom),
-                          size=(12*self.zoom,16*self.zoom))
+                Rectangle(pos=(sx-6*self.zoom,sy-17*self.zoom),
+                          size=(12*self.zoom,15*self.zoom))
             # Abandoned transport landmarks
             for lm in self.landmarks:
                 sx,sy=self.to_screen(lm["x"],lm["y"])
@@ -162,6 +174,11 @@ class GameMap(Widget):
 
     def tap(self,sx,sy):
         wx,wy=self.to_world(sx,sy)
+        # Buildings are checked first so they can be selected and inspected.
+        for b in self.buildings:
+            if abs(b["x"]-wx) < 42/self.zoom and abs(b["y"]-wy) < 35/self.zoom:
+                self.game.building_info(b)
+                return
         nearby=[o for o in self.objects if o["alive"] and
                 math.hypot(o["x"]-wx,o["y"]-wy)<45/self.zoom]
         if nearby:
@@ -177,13 +194,35 @@ class GameMap(Widget):
             self.game.say("Выбери дерево или камень либо включи строительство.")
 
     def place_building(self,kind,x,y):
+        # Snap construction to a simple world grid for tidy city blocks.
+        grid=80
+        x=round(x/grid)*grid
+        y=round(y/grid)*grid
         self.buildings.append({"type":kind,"x":x,"y":y})
         self.draw_map()
+        return x,y
+
+    def can_place(self,x,y):
+        grid=80
+        x=round(x/grid)*grid
+        y=round(y/grid)*grid
+        if x < 55 or y < 55 or x > self.world_size[0]-55 or y > self.world_size[1]-55:
+            return False, "За пределами доступной территории."
+        # Keep the two main roads clear.
+        if abs(y-790) < 75 or abs(x-1080) < 75:
+            return False, "Нельзя строить на дороге. Выбери свободное место."
+        if any(abs(b["x"]-x)<75 and abs(b["y"]-y)<65 for b in self.buildings):
+            return False, "Здесь уже есть здание или слишком мало места."
+        if any(o["alive"] and math.hypot(o["x"]-x,o["y"]-y)<55 for o in self.objects):
+            return False, "Сначала убери дерево или камень с этого места."
+        if any(math.hypot(lm["x"]-x,lm["y"]-y)<90 for lm in self.landmarks):
+            return False, "Нельзя перекрывать заброшенную инфраструктуру."
+        return True, ""
 
 
 class AncientCivilization(App):
     def build(self):
-        self.title="Ancient Civilization — Prototype 0.1"
+        self.title="Ancient Civilization — Prototype 0.2"
         self.money,self.wood,self.stone,self.metal=2500,35,20,0
         self.population,self.capacity=12,20
         self.level,self.xp,self.xp_need=1,0,100
@@ -252,6 +291,10 @@ class AncientCivilization(App):
         self.say(f"Выбрано здание: {self.building}. Нажми на свободное место.")
 
     def build_at(self,x,y):
+        allowed,reason=self.map.can_place(x,y)
+        if not allowed:
+            self.say(reason)
+            return
         if self.building=="house":
             cost=(500,10,5); required=0
         else:
@@ -263,7 +306,7 @@ class AncientCivilization(App):
             self.say(f"Недостаточно населения: нужно {required}, есть {self.population}.")
             return
         self.money-=cost[0]; self.wood-=cost[1]; self.stone-=cost[2]
-        self.map.place_building(self.building,x,y)
+        bx,by=self.map.place_building(self.building,x,y)
         if self.building=="house":
             self.capacity+=10
             self.say("Дом построен! Вместимость населения увеличена на 10.")
@@ -282,6 +325,12 @@ class AncientCivilization(App):
             self.money+=500; self.wood+=10
             self.message=f"Новый уровень {self.level}! Награда: 500 денег и 10 дерева."
         self.refresh()
+
+    def building_info(self,b):
+        if b["type"] == "house":
+            self.say("Жилой дом: увеличивает максимальную вместимость населения на 10.")
+        else:
+            self.say("Магазин: приносит 25 денег каждые 10 секунд.")
 
     def landmark_info(self,lm):
         if self.level<lm["level"]:
